@@ -1,3 +1,9 @@
+using EntityFrameworkCoreNewFeatures.Data;
+using EntityFrameworkCoreNewFeatures.Interceptors;
+using Microsoft.AspNetCore.Http.HttpResults;
+using Microsoft.EntityFrameworkCore;
+using System.Text.Json.Serialization;
+
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
@@ -5,7 +11,38 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
+//Configure Json to handle circular refrences
+builder.Services.ConfigureHttpJsonOptions(options =>
+{
+    options.SerializerOptions.ReferenceHandler = ReferenceHandler.IgnoreCycles;
+    options.SerializerOptions.DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull;
+});
+//Register Dbcontext with sql server and interceptor
+builder.Services.AddDbContext<AppDbContext>((serviceprovider, options) =>
+{
+    options.UseSqlServer(
+        builder.Configuration.GetConnectionString("DefaultConnection"),
+        sqloptions =>
+        {
+            //Enable Temporal Table support
+            sqloptions.UseQuerySplittingBehavior(QuerySplittingBehavior.SplitQuery);
+        })
+         //Add custom interceptop of loggin and auditing
+        .AddInterceptors(new CustomSaveChangesInterceptor());
+});
+
+
 var app = builder.Build();
+
+//Seed Database with initial Data
+using(var scope = app.Services.CreateScope())
+{
+    var context=scope.ServiceProvider.GetService<AppDbContext>();
+    //Ensure Database is ready and apply pending migrations
+    await context.Database.MigrateAsync();
+    //Seed initial data only run if database is empty
+    await context.SeedProductIntialDataAsync();
+}
 
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
@@ -33,6 +70,17 @@ app.MapGet("/weatherforecast", () =>
 })
 .WithName("GetWeatherForecast")
 .WithOpenApi();
+
+//1: AsNoTracking
+app.MapGet("api/categories",async(AppDbContext db) =>
+{
+    var categories =await db.Categories
+        .AsNoTracking()//No Change Tracking
+        .ToListAsync();
+    return Results.Ok(categories);
+})
+    .WithName("GetCategories")
+    .WithOpenApi();
 
 app.Run();
 

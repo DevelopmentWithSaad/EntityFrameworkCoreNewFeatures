@@ -6,7 +6,7 @@ namespace EntityFrameworkCoreNewFeatures.Models
     {
         public string? Color { get; set; }
         public string? Size { get; set; }
-        public string? Weight { get; set; }
+        public double? Weight { get; set; }
         public string? Brand { get; set; }
         public string? Material { get; set; }
         public string? Model { get; set; }
